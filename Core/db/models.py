@@ -30,11 +30,11 @@ class TitanicModel:
         """The ticket table contains information about the tickets purchased by the passengers"""
         self.ticket_table = sqlalchemy.Table(
             'ticket', self.metadata,
-            sqlalchemy.Column('id', sqlalchemy.Integer, primary_key=True),
+            sqlalchemy.Column('id', sqlalchemy.Integer, primary_key=True, autoincrement=True),
             sqlalchemy.Column('ticket_number', sqlalchemy.String),
             sqlalchemy.Column('fare', sqlalchemy.Float),
-            sqlalchemy.Column('embarked', sqlalchemy.String),
             sqlalchemy.Column('cabin', sqlalchemy.String, nullable=True),
+            sqlalchemy.Column('embarked', sqlalchemy.String),
         )
 
         """The passenger table contains information about the passengers and their tickets"""
@@ -54,6 +54,9 @@ class TitanicModel:
 
         self.create_index_if_not_exists(idx_first_name)
         self.create_index_if_not_exists(idx_full_name)
+
+    def drop_tables(self):
+        self.metadata.drop_all(self.engine)
 
     def create_index_if_not_exists(self, index):
         insp = inspect(self.engine)
