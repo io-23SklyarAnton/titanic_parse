@@ -1,0 +1,17 @@
+version: '3'
+services:
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: titanic
+      POSTGRES_PASSWORD: titanic
+      POSTGRES_DB: titanic
+    ports:
+      - 5433:5432
+    networks:
+      - brand_n_retail
+    container_name: postgres_db
+
+networks:
+  brand_n_retail:
+    driver: bridge
