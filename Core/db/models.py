@@ -1,65 +1,88 @@
 import os
 
-import sqlalchemy
-from sqlalchemy import create_engine, Index, inspect
+from sqlalchemy import create_engine
 from dotenv import load_dotenv
+from sqlalchemy.orm import sessionmaker, scoped_session, DeclarativeBase
+
+from sqlalchemy import Column, Integer, String, Boolean, Float, ForeignKey
+from sqlalchemy.orm import relationship
 
 load_dotenv()
 
+engine = create_engine(f'{os.getenv("DB_DRIVER")}://{os.getenv("DB_USER")}:{os.getenv("DB_PASS")}' +
+                       f'@{os.getenv("DB_HOST")}:{os.getenv("DB_PORT")}/{os.getenv("DB_NAME")}',
+                       pool_size=100,
+                       max_overflow=100,
+                       )
 
-class TitanicModel:
-    """Contains Person, Passenger, and Ticket tables for Titanic db"""
 
-    def __init__(self):
-        self.engine = create_engine(
-            f'postgresql://{os.getenv("USER")}:{os.getenv("PASSWORD")}@{os.getenv("HOST")}/{os.getenv("DB_NAME")}',
-            echo=True)
-        self.metadata = sqlalchemy.MetaData()
+def read_session(func):
+    def inner(*args, **kwargs):
+        session_factory = sessionmaker(engine)
+        session = scoped_session(session_factory)
+        result = func(session, *args, **kwargs)
+        session.close()
+        return result
 
-        """The person table contains information about the passengers"""
-        self.person_table = sqlalchemy.Table(
-            'person', self.metadata,
-            sqlalchemy.Column('id', sqlalchemy.Integer, primary_key=True, autoincrement=True),
-            sqlalchemy.Column('first_name', sqlalchemy.String),
-            sqlalchemy.Column('last_name', sqlalchemy.String),
-            sqlalchemy.Column('age', sqlalchemy.Integer, nullable=True),
-            sqlalchemy.Column('person_class', sqlalchemy.String),
-            sqlalchemy.Column('survived', sqlalchemy.Boolean)
-        )
+    return inner
 
-        """The ticket table contains information about the tickets purchased by the passengers"""
-        self.ticket_table = sqlalchemy.Table(
-            'ticket', self.metadata,
-            sqlalchemy.Column('id', sqlalchemy.Integer, primary_key=True, autoincrement=True),
-            sqlalchemy.Column('ticket_number', sqlalchemy.String),
-            sqlalchemy.Column('fare', sqlalchemy.Float),
-            sqlalchemy.Column('cabin', sqlalchemy.String, nullable=True),
-            sqlalchemy.Column('embarked', sqlalchemy.String),
-        )
 
-        """The passenger table contains information about the passengers and their tickets"""
-        self.passenger_table = sqlalchemy.Table(
-            'passenger', self.metadata,
-            sqlalchemy.Column('id', sqlalchemy.Integer, primary_key=True),
-            sqlalchemy.Column('person_id', sqlalchemy.Integer, sqlalchemy.ForeignKey('person.id', ondelete='CASCADE')),
-            sqlalchemy.Column('ticket_id', sqlalchemy.Integer, sqlalchemy.ForeignKey('ticket.id', ondelete='CASCADE')),
-            sqlalchemy.Column('sib_sp', sqlalchemy.Integer),
-            sqlalchemy.Column('par_ch', sqlalchemy.Integer),
-        )
+def write_session(func):
+    def inner(*args, **kwargs):
+        session_factory = sessionmaker(engine)
+        session = scoped_session(session_factory)
+        result = func(session, *args, **kwargs)
+        session.commit()
+        session.close()
+        return result
 
-    def create_tables(self):
-        self.metadata.create_all(self.engine)
-        idx_first_name = Index('idx_first_name', self.person_table.c.first_name)
-        idx_full_name = Index('idx_full_name', self.person_table.c.first_name, self.person_table.c.last_name)
+    return inner
 
-        self.create_index_if_not_exists(idx_first_name)
-        self.create_index_if_not_exists(idx_full_name)
 
-    def drop_tables(self):
-        self.metadata.drop_all(self.engine)
+class Base(DeclarativeBase):
+    pass
 
-    def create_index_if_not_exists(self, index):
-        insp = inspect(self.engine)
-        table_indexes = insp.get_indexes(index.table.name)
-        if not any(idx['name'] == index.name for idx in table_indexes):
-            index.create(self.engine)
+
+class Person(Base):
+    __tablename__ = 'person'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    first_name = Column(String)
+    last_name = Column(String)
+    age = Column(Integer, nullable=True)
+    person_class = Column(String)
+    survived = Column(Boolean)
+
+    passengers = relationship("Passenger", back_populates="person")
+
+
+class Ticket(Base):
+    __tablename__ = 'ticket'
+
+    ticket_number = Column(String, primary_key=True)
+    fare = Column(Float)
+    cabin = Column(String, nullable=True)
+    embarked = Column(String)
+
+    passengers = relationship("Passenger", back_populates="ticket")
+
+
+class Passenger(Base):
+    __tablename__ = 'passenger'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    person_id = Column(Integer, ForeignKey('person.id', ondelete='CASCADE'))
+    ticket_number = Column(String, ForeignKey('ticket.ticket_number', ondelete='CASCADE'))
+    sib_sp = Column(Integer)
+    par_ch = Column(Integer)
+
+    person = relationship("Person", back_populates="passengers")
+    ticket = relationship("Ticket", back_populates="passengers")
+
+
+def create_tables():
+    Base.metadata.create_all(engine)
+
+
+def drop_tables():
+    Base.metadata.drop_all(engine)
